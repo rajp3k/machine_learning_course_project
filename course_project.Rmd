@@ -1,0 +1,106 @@
+---
+title: "Prediction Assignment"
+author: "Rajesh Prabhakar"
+output:
+  html_document:
+    df_print: paged
+  keep_md: yes
+---
+
+
+# 1) Load & process training data
+
+NA/empty columns & columns which contain data which doesn't come from accelerometers are removed.
+
+```{r,echo = TRUE,message = FALSE}
+
+library(dplyr)
+
+training_data <- read.csv("pml-training.csv",na.strings = c("","NA"))
+
+training_data <- training_data %>%
+  select_if(~all(!is.na(.)))
+
+training_data <- training_data[ ,-1:-7]
+
+```
+
+# 2) Split training data into training set & testing set
+
+Cross validation will be done using random subsampling to create training & testing sets.
+
+```{r,echo = TRUE,message = FALSE}
+
+library(caret)
+
+set.seed(123)
+
+inTrain <- createDataPartition(y = training_data$classe,p = 0.75,list = FALSE)
+
+training <- training_data[inTrain,]
+testing <- training_data[-inTrain,]
+
+```
+
+# 3) Train model using training set
+
+Model training will be done using random forests method on all accelerometer data. To reduce training time, parallel processing will be used & results will be cached.
+
+```{r,echo = TRUE,message = FALSE,cache = TRUE}
+
+library(parallel)
+library(doParallel)
+
+set.seed(123)
+
+cluster <- makeCluster(detectCores())
+registerDoParallel(cluster)
+fitControl <- trainControl(allowParallel = TRUE)
+
+modFit <- train(classe ~ . ,data = training,method = "rf",trcontrol = fitControl)
+
+stopCluster(cluster)
+registerDoSEQ()
+
+```
+
+# 4) Apply trained model to testing set
+
+Out of sample error will be calculated using confusion matrix.
+
+```{r,echo = TRUE,message = FALSE}
+
+set.seed(123)
+
+pred <- predict(modFit,testing)
+testing$classe <- as.factor(testing$classe)
+confusionMatrix(pred,testing$classe)
+
+```
+
+Accuracy is 0.995 & Kappa is 0.994 when trained model is applied to testing set, which indicates prediction model is very accurate.
+
+# 5) Load & process testing data
+
+NA/empty columns & columns which contain data which doesn't come from accelerometers are removed.
+
+```{r,echo = TRUE,message = FALSE}
+
+testing_data <- read.csv("pml-testing.csv",na.strings = c("","NA"))
+
+testing_data <- testing_data %>%
+  select_if(~all(!is.na(.)))
+
+testing_data <- testing_data[ ,-1:-7]
+
+```
+
+# 6) Predict "classe" variable in testing data
+
+```{r,echo = TRUE,message = FALSE}
+
+pred <- predict(modFit,testing_data)
+testing_data <- cbind(testing_data,pred)
+print(testing_data[ ,c("problem_id","pred")])
+
+```
